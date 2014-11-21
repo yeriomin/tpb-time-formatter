@@ -20,7 +20,7 @@
 // @require     http://raw.githubusercontent.com/phstc/jquery-dateFormat/master/dist/jquery-dateFormat.min.js
 // ==/UserScript==
 
-var dateFormat = "dd.MM.yy";
+var dateFormat = "dd.MM.yyyy";
 var timeFormat = "HH:mm";
 
 var page = "", pathparts = location.pathname.split("/");
@@ -31,6 +31,7 @@ switch (page) {
     case "torrent":
         // This is the torrent page
         replaceDateInDescription();
+        replaceDatesInComments();
         break;
     case "search":
     case "browse":
@@ -45,11 +46,30 @@ switch (page) {
 
 /**
  * Replace a date in torrent's description on the page dedicated to one torrent
+ * Date in torrent description is in GMT+0
  *
  */
 function replaceDateInDescription() {
-    var dateElement = document.getElementsByClassName("col2").item(0).getElementsByTagName("dd").item(0);
+    // Uploaded field might be at any position in the description table and has no special class name or id
+    // So we have to find the field with the "Uploaded:" content and get the field next to it
+    var dateElement = document.evaluate('//dt[text()="Uploaded:"]', document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE).snapshotItem(0).nextSibling.nextSibling;
     dateElement.innerHTML = $.format.toBrowserTimeZone(new Date(dateElement.innerHTML), timeFormat + ' ' + dateFormat);
+}
+
+/**
+ * Replace dates in user comments on torrent's description page
+ * Comments dates are in CET timezone which is GMT+1
+ *
+ */
+function replaceDatesInComments() {
+    var pElements = document.getElementsByClassName("byline");
+    for (var pNum = 0; pNum < pElements.length; pNum++) {
+        var rawDateString = pElements[pNum].textContent.match(/\d\d\d\d-\d\d-\d\d \d\d:\d\d \w\w\w/g).pop();
+        // Date.parse() doesn't know what CET is
+        var date = new Date(Date.parse(rawDateString.replace('CET', '+0100')));
+        var formattedDateString = $.format.toBrowserTimeZone(date, dateFormat + ' ' + timeFormat);
+        pElements[pNum].innerHTML = pElements[pNum].innerHTML.replace(rawDateString, formattedDateString);
+    }
 }
 
 /**
@@ -96,7 +116,7 @@ function getDate(rawDateString) {
         var dateParts = treatedDateStringParts.pop().split("-");
         var month = dateParts.shift();
         var day = dateParts.shift();
-        treatedDateString = new Date().getYear() + "-" + month + "-" + day + " " + time;
+        treatedDateString = new Date().getFullYear() + "-" + month + "-" + day + " " + time;
     } else {
         // "Today 13:45" type
         treatedDateString = treatedDateString
@@ -104,7 +124,7 @@ function getDate(rawDateString) {
             .replace("Y-day", $.format.date(new Date().getTime() - 24*60*60*1000, "yyyy-MM-dd"))
         ;
     }
-    // TPB dates are in GMT+0 time zone
+    // TPB list dates are in GMT+0 time zone
     treatedDateString = treatedDateString + " GMT";
     var date = new Date(Date.parse(treatedDateString));
     date.hasTime = hasTime;
